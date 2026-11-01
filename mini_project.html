@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Resume Analyzer and Improvisor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<style>
+:root{
+  --bg:#eef1f5; --panel:#ffffff; --ink:#18213f; --muted:#5d6785; --line:#d9dfea;
+  --brand:#2b3a8c; --brand-ink:#ffffff; --accent:#f0a500; --good:#1f8a5b; --bad:#c2410c;
+  --chip:#e6eaf7;
+}
+@media (prefers-color-scheme: dark){
+  :root{ --bg:#0f1427; --panel:#171e38; --ink:#e8ecfa; --muted:#9aa5c9; --line:#2a3358;
+    --brand:#8fa2ff; --brand-ink:#0f1427; --accent:#ffbf3c; --good:#4cc38a; --bad:#ff9a6b; --chip:#232c52; }
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.55 "Source Sans 3",system-ui,Segoe UI,Arial,sans-serif}
+h1,h2,h3{font-family:"Bricolage Grotesque",system-ui,Segoe UI,Arial,sans-serif;margin:0 0 .5rem;line-height:1.2}
+.app{display:grid;grid-template-columns:240px 1fr;min-height:100vh}
+aside{background:var(--brand);color:var(--brand-ink);padding:28px 20px;position:sticky;top:0;height:100vh}
+aside h1{font-size:1.35rem;margin-bottom:.25rem}
+aside p{margin:0 0 28px;opacity:.8;font-size:.9rem}
+nav button{display:block;width:100%;text-align:left;background:transparent;color:inherit;border:0;border-radius:8px;
+  padding:11px 12px;font:inherit;font-weight:600;cursor:pointer;margin-bottom:4px;opacity:.8}
+nav button:hover{opacity:1;background:rgba(255,255,255,.12)}
+nav button.on{opacity:1;background:rgba(255,255,255,.2)}
+nav button:focus-visible,.btn:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible,.drop:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+main{padding:32px clamp(16px,4vw,48px);max-width:1000px;width:100%}
+.view{display:none}.view.on{display:block}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:22px;margin-bottom:18px}
+.drop{border:2px dashed var(--line);border-radius:12px;padding:44px 20px;text-align:center;cursor:pointer;background:var(--panel);transition:border-color .15s,background .15s}
+.drop.over{border-color:var(--brand);background:var(--chip)}
+.drop strong{font-family:"Bricolage Grotesque",sans-serif;font-size:1.2rem;display:block;margin-bottom:4px}
+.drop span{color:var(--muted)}
+.btn{background:var(--brand);color:var(--brand-ink);border:0;border-radius:8px;padding:10px 18px;font:inherit;font-weight:600;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--brand);border:1px solid var(--brand)}
+.btn:disabled{opacity:.5;cursor:default}
+.score-row{display:flex;gap:28px;align-items:center;flex-wrap:wrap}
+.ring{position:relative;width:140px;height:140px;flex:none}
+.ring svg{transform:rotate(-90deg)}
+.ring .num{position:absolute;inset:0;display:grid;place-items:center;font:700 2rem "Bricolage Grotesque",sans-serif}
+.bars{flex:1;min-width:240px}
+.bar{display:grid;grid-template-columns:150px 1fr 48px;gap:10px;align-items:center;font-size:.92rem;margin:7px 0}
+.track{height:9px;background:var(--chip);border-radius:9px;overflow:hidden}
+.fill{height:100%;background:var(--brand);border-radius:9px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{background:var(--chip);border-radius:20px;padding:3px 12px;font-size:.88rem}
+.chip.miss{background:transparent;border:1px dashed var(--bad);color:var(--bad)}
+.chip.ok{background:transparent;border:1px solid var(--good);color:var(--good)}
+ul.plain{margin:0;padding-left:20px}
+ul.plain li{margin:4px 0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.role{margin:10px 0}
+.role .top{display:flex;justify-content:space-between;font-weight:600}
+label{display:block;font-weight:600;margin:12px 0 4px}
+input,select,textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);font:inherit}
+table{width:100%;border-collapse:collapse;font-size:.95rem}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line)}
+th{color:var(--muted);font-weight:600}
+.scroll{overflow-x:auto}
+.muted{color:var(--muted)}
+.err{background:var(--panel);border:1px solid var(--bad);color:var(--bad);border-radius:10px;padding:12px 16px;margin-top:14px}
+.star{color:var(--accent)}
+.review{border-bottom:1px solid var(--line);padding:12px 0}
+.review:last-child{border:0}
+.toast{position:fixed;bottom:20px;right:20px;background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:8px;display:none}
+@media (max-width:760px){
+  .app{grid-template-columns:1fr}
+  aside{position:static;height:auto;padding:16px}
+  aside p{display:none}
+  nav{display:flex;flex-wrap:wrap;gap:4px}
+  nav button{width:auto;margin:0}
+  .grid2{grid-template-columns:1fr}
+  .bar{grid-template-columns:110px 1fr 40px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <h1>Resume Analyzer</h1>
+    <p>Score a resume, find gaps, match job roles.</p>
+    <nav id="nav">
+      <button data-view="analyze" class="on">Analyze a resume</button>
+      <button data-view="history">Saved analyses</button>
+      <button data-view="addreview">Add a review</button>
+      <button data-view="reviews">Reviews</button>
+    </nav>
+  </aside>
+
+  <main>
+    <!-- ANALYZE -->
+    <section id="analyze" class="view on">
+      <h2>Analyze a resume</h2>
+      <div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose a resume file">
+        <strong>Drop your resume here, or click to choose a file</strong>
+        <span>PDF, DOCX or TXT. Your file stays in this browser.</span>
+        <input type="file" id="file" accept=".pdf,.docx,.txt" hidden>
+      </div>
+      <div id="error"></div>
+      <div id="report" style="margin-top:20px"></div>
+    </section>
+
+    <!-- HISTORY -->
+    <section id="history" class="view">
+      <h2>Saved analyses</h2>
+      <div class="card scroll" id="historyBody"></div>
+    </section>
+
+    <!-- ADD REVIEW -->
+    <section id="addreview" class="view">
+      <h2>Add a review</h2>
+      <div class="card" style="max-width:560px">
+        <label for="rvName">Reviewer name</label>
+        <input id="rvName">
+        <label for="rvRel">Relation</label>
+        <select id="rvRel"><option>Mentor</option><option>Professor</option><option>Senior</option><option>HR</option><option selected>Friend</option></select>
+        <label for="rvRating">Rating</label>
+        <select id="rvRating"><option>5</option><option>4</option><option>3</option><option>2</option><option>1</option></select>
+        <label for="rvComment">Feedback</label>
+        <textarea id="rvComment" rows="4"></textarea>
+        <p><button class="btn" id="rvSave">Save review</button></p>
+        <div id="rvErr"></div>
+      </div>
+    </section>
+
+    <!-- REVIEWS -->
+    <section id="reviews" class="view">
+      <h2>Reviews</h2>
+      <div class="card" id="reviewsBody"></div>
+    </section>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ======================================================================
+   1. KNOWLEDGE BASE  (same as the Python version, edit to extend)
+   ====================================================================== */
+const JOB_ROLES = {
+  "Data Scientist": ["python","machine learning","statistics","pandas","numpy","scikit-learn","sql","data visualization","deep learning","tensorflow","matplotlib"],
+  "Data Analyst": ["sql","excel","power bi","tableau","python","pandas","statistics","data visualization","reporting"],
+  "Machine Learning Engineer": ["python","machine learning","deep learning","tensorflow","pytorch","scikit-learn","docker","git","mlops","numpy"],
+  "Web Developer": ["html","css","javascript","react","node.js","git","mongodb","sql","rest api","bootstrap"],
+  "Backend Developer": ["python","java","django","flask","sql","rest api","docker","git","postgresql","mongodb"],
+  "Android Developer": ["java","kotlin","android","xml","firebase","git","rest api"],
+  "DevOps Engineer": ["linux","docker","kubernetes","aws","jenkins","git","ci/cd","terraform","bash"],
+  "Cyber Security Analyst": ["networking","linux","cyber security","penetration testing","wireshark","python","cryptography","firewall"],
+  "Software Engineer": ["data structures","algorithms","java","c++","python","git","sql","oops","operating systems"]
+};
+const EXTRA_SKILLS = ["c","r","scala","go","php","typescript","angular","vue","spring boot","nlp","computer vision","keras","spark","hadoop","azure","gcp","mysql","redis","agile","scrum","jira","communication","leadership","problem solving","teamwork"];
+const ALL_SKILLS = [...new Set([].concat(...Object.values(JOB_ROLES), EXTRA_SKILLS))].sort();
+
+const SECTION_HEADINGS = {
+  education: "education|academic|qualification",
+  projects: "projects?|academic projects",
+  certifications: "certifications?|certificates?|courses?|licenses?",
+  experience: "experience|internships?|work history|employment",
+  skills: "skills|technical skills|technologies"
+};
+const DEGREE_WORDS = ["b.tech","btech","b.e","bachelor","m.tech","mtech","master","mca","bca","b.sc","m.sc","phd","diploma","mba","12th","10th","cgpa","gpa"];
+const SUPPORTED = [".pdf",".docx",".txt"];
+
+/* ======================================================================
+   2. STORAGE  (browsers cannot talk to MySQL, so we use localStorage)
+   ====================================================================== */
+function dbLoad(key){ try{ return JSON.parse(localStorage.getItem(key)) || []; }catch(e){ return []; } }
+function dbSave(key,val){ try{ localStorage.setItem(key, JSON.stringify(val)); return true; }catch(e){ return false; } }
+function now(withTime){ const d=new Date(), p=n=>String(n).padStart(2,"0");
+  const day=`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+  return withTime ? `${day} ${p(d.getHours())}:${p(d.getMinutes())}` : day; }
+
+/* ======================================================================
+   3. FILE READING
+   ====================================================================== */
+async function readPdf(buffer){
+  const pdfjsLib = window.pdfjsLib;
+  const wUrl = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  try{
+    const code = await (await fetch(wUrl)).text();
+    pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(new Blob([code],{type:"text/javascript"}));
+  }catch(e){ pdfjsLib.GlobalWorkerOptions.workerSrc = wUrl; }
+  const pdf = await pdfjsLib.getDocument({data:buffer}).promise;
+  let out = [];
+  for(let i=1;i<=pdf.numPages;i++){
+    const content = await (await pdf.getPage(i)).getTextContent();
+    let lastY = null, line = "";
+    for(const it of content.items){
+      const y = it.transform[5];
+      if(lastY !== null && Math.abs(y-lastY) > 2){ out.push(line); line = ""; }
+      line += it.str + (it.hasEOL ? "" : "");
+      lastY = y;
+    }
+    if(line) out.push(line);
+  }
+  return out.join("\n");
+}
+async function readResume(file){
+  const name = file.name.toLowerCase();
+  if(name.endsWith(".pdf")) return readPdf(await file.arrayBuffer());
+  if(name.endsWith(".docx")) return (await mammoth.extractRawText({arrayBuffer: await file.arrayBuffer()})).value;
+  return await file.text();
+}
+
+/* ======================================================================
+   4. EXTRACTION
+   ====================================================================== */
+const escRe = s => s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+function extractSkills(text){
+  const low = text.toLowerCase(), found = [];
+  for(const s of ALL_SKILLS){
+    if(new RegExp("(?<![\\w+#])" + escRe(s) + "(?![\\w+#])").test(low)) found.push(s);
+  }
+  return found;
+}
+function splitSections(text){
+  const sections = {}; Object.keys(SECTION_HEADINGS).forEach(k => sections[k] = []);
+  let current = null;
+  for(const raw of text.split(/\r?\n/)){
+    const clean = raw.trim(); if(!clean) continue;
+    let matched = null;
+    if(clean.length < 40){
+      for(const [key,pat] of Object.entries(SECTION_HEADINGS)){
+        if(new RegExp("^\\s*(" + pat + ")\\s*:?\\s*$","i").test(clean)){ matched = key; break; }
+      }
+    }
+    if(matched) current = matched; else if(current) sections[current].push(clean);
+  }
+  return sections;
+}
+function contactInfo(text){
+  return {
+    "email": /[\w.+-]+@[\w-]+\.[\w.]+/.test(text),
+    "phone": /(\+?\d[\d\s-]{8,}\d)/.test(text),
+    "linkedin/github": /linkedin\.com|github\.com/i.test(text)
+  };
+}
+
+/* ======================================================================
+   5. SCORING
+   ====================================================================== */
+const r1 = x => Math.round(x*10)/10;
+function scoreResume(text, skills, sections){
+  const tips = [], b = {}, low = text.toLowerCase();
+
+  b["Skills (30)"] = r1(Math.min(skills.length/15,1)*30);
+  if(skills.length < 10) tips.push("Add more relevant technical skills (aim for 10-15).");
+
+  const hasEdu = sections.education.length>0 || DEGREE_WORDS.some(w => low.includes(w));
+  b["Education (15)"] = hasEdu ? 15 : 0;
+  if(!hasEdu) tips.push("Add an Education section with degree, college and CGPA.");
+
+  b["Projects (20)"] = r1(Math.min(sections.projects.length/6,1)*20);
+  if(b["Projects (20)"] < 15) tips.push("Add 2-3 projects with a short description and the tech stack used.");
+
+  let expLines = sections.experience.length;
+  if(expLines === 0 && /intern|experience/.test(low)) expLines = 2;
+  b["Experience (15)"] = r1(Math.min(expLines/6,1)*15);
+  if(b["Experience (15)"] < 8) tips.push("Include internships or work experience; quantify results (e.g. 'improved speed by 30%').");
+
+  b["Certifications (10)"] = r1(Math.min(sections.certifications.length/3,1)*10);
+  if(b["Certifications (10)"] < 6) tips.push("Add relevant certifications (Coursera, NPTEL, AWS, Google, etc.).");
+
+  const c = contactInfo(text);
+  b["Contact & Links (10)"] = r1((c.email?3:0)+(c.phone?3:0)+(c["linkedin/github"]?4:0));
+  for(const [k,ok] of Object.entries(c)) if(!ok) tips.push(`Add your ${k} to the contact details.`);
+
+  const words = text.split(/\s+/).filter(Boolean).length;
+  if(words < 150) tips.push("Resume looks too short; add more detail.");
+  else if(words > 900) tips.push("Resume is too long; keep it to 1-2 pages.");
+  if(!/\b(developed|built|designed|implemented|led|created|improved)\b/.test(low))
+    tips.push("Use strong action verbs (developed, built, implemented, led).");
+
+  const total = r1(Object.values(b).reduce((a,v)=>a+v,0));
+  return {total, breakdown:b, tips};
+}
+
+/* ======================================================================
+   6. ROLE MATCHING  (TF-IDF + cosine similarity, replaces scikit-learn)
+   ====================================================================== */
+const ROLE_NAMES = Object.keys(JOB_ROLES);
+const IDF = (()=>{
+  const df = {};
+  ROLE_NAMES.forEach(r => JOB_ROLES[r].forEach(s => df[s] = (df[s]||0)+1));
+  const idf = {};
+  ALL_SKILLS.forEach(s => idf[s] = Math.log((1+ROLE_NAMES.length)/(1+(df[s]||0))) + 1);
+  return idf;
+})();
+function vec(list){ const v={}; list.forEach(s => v[s] = IDF[s] || 1); return v; }
+function cosine(a,b){
+  let dot=0,na=0,nb=0;
+  for(const k in a){ na+=a[k]*a[k]; if(b[k]) dot+=a[k]*b[k]; }
+  for(const k in b) nb+=b[k]*b[k];
+  return (na&&nb) ? dot/Math.sqrt(na*nb) : 0;
+}
+function suggestRoles(skills, topN=3){
+  const u = vec(skills);
+  const sims = ROLE_NAMES.map(r => cosine(u, vec(JOB_ROLES[r])));
+  const exps = sims.map(s => Math.exp(s*8)), sum = exps.reduce((a,b)=>a+b,0);
+  return ROLE_NAMES.map((r,i)=>[r, r1(exps[i]/sum*100)]).sort((a,b)=>b[1]-a[1]).slice(0,topN);
+}
+function skillGap(skills, role){
+  const req = JOB_ROLES[role];
+  const have = req.filter(s => skills.includes(s)), missing = req.filter(s => !skills.includes(s));
+  return {role, have, missing, match: r1(have.length/req.length*100)};
+}
+function similarPast(skills, history){
+  if(!history.length) return [];
+  const u = vec(skills);
+  return history.map(h => ({...h, sim: r1(cosine(u, vec(h.skills))*100)}))
+                .sort((a,b)=>b.sim-a.sim).slice(0,5);
+}
+
+/* ======================================================================
+   7. MAIN ANALYSIS
+   ====================================================================== */
+async function analyzeResume(file){
+  if(!SUPPORTED.some(e => file.name.toLowerCase().endsWith(e)))
+    throw new Error("Unsupported file type. Use PDF, DOCX or TXT.");
+  const text = await readResume(file);
+  if(text.trim().length < 30)
+    throw new Error("Could not read text from this file (it may be a scanned image).");
+  const skills = extractSkills(text), sections = splitSections(text);
+  const {total, breakdown, tips} = scoreResume(text, skills, sections);
+  const roles = skills.length ? suggestRoles(skills) : [];
+  return {file_name:file.name, score:total, breakdown, skills, sections, tips, roles, top_role: roles.length?roles[0][0]:"N/A"};
+}
+
+/* ======================================================================
+   8. USER INTERFACE
+   ====================================================================== */
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let current = null;
+
+function toast(msg){ const t=$("toast"); t.textContent=msg; t.style.display="block"; setTimeout(()=>t.style.display="none",2200); }
+
+/* navigation */
+document.querySelectorAll("#nav button").forEach(btn => btn.addEventListener("click", () => {
+  document.querySelectorAll("#nav button").forEach(b => b.classList.toggle("on", b===btn));
+  document.querySelectorAll(".view").forEach(v => v.classList.toggle("on", v.id===btn.dataset.view));
+  if(btn.dataset.view==="history") renderHistory();
+  if(btn.dataset.view==="reviews") renderReviews();
+}));
+
+/* upload */
+const drop = $("drop"), fileInput = $("file");
+drop.addEventListener("click", () => fileInput.click());
+drop.addEventListener("keydown", e => { if(e.key==="Enter"||e.key===" "){ e.preventDefault(); fileInput.click(); }});
+["dragenter","dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave","drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => { if(e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener("change", () => { if(fileInput.files[0]) handleFile(fileInput.files[0]); fileInput.value=""; });
+
+async function handleFile(file){
+  $("error").innerHTML = ""; $("report").innerHTML = '<p class="muted">Analyzing ' + esc(file.name) + '...</p>';
+  try{
+    current = await analyzeResume(file);
+    renderReport();
+  }catch(e){
+    $("report").innerHTML = "";
+    $("error").innerHTML = '<div class="err">' + esc(e.message || e) + '</div>';
+  }
+}
+
+function listHtml(items, empty){
+  return items.length ? '<ul class="plain">' + items.map(i => '<li>' + esc(i) + '</li>').join("") + '</ul>'
+                      : '<p class="muted">' + empty + '</p>';
+}
+
+function renderReport(){
+  const r = current, C = 2*Math.PI*58, off = C*(1-r.score/100);
+  const bars = Object.entries(r.breakdown).map(([k,v]) => {
+    const max = parseFloat(k.match(/\((\d+)\)/)[1]);
+    return `<div class="bar"><span>${esc(k.replace(/\s*\(\d+\)/,""))}</span>
+      <div class="track"><div class="fill" style="width:${v/max*100}%"></div></div><span>${v}/${max}</span></div>`;
+  }).join("");
+
+  const roleHtml = r.roles.length ? r.roles.map(([n,p]) =>
+    `<div class="role"><div class="top"><span>${esc(n)}</span><span>${p}%</span></div>
+     <div class="track"><div class="fill" style="width:${p}%"></div></div></div>`).join("")
+     : '<p class="muted">No known skills detected, so no role can be suggested.</p>';
+
+  const opts = ROLE_NAMES.map(n => `<option ${n===r.top_role?"selected":""}>${esc(n)}</option>`).join("");
+
+  $("report").innerHTML = `
+    <div class="card"><div class="score-row">
+      <div class="ring"><svg width="140" height="140" viewBox="0 0 140 140">
+        <circle cx="70" cy="70" r="58" fill="none" stroke="var(--chip)" stroke-width="12"/>
+        <circle cx="70" cy="70" r="58" fill="none" stroke="var(--brand)" stroke-width="12" stroke-linecap="round"
+          stroke-dasharray="${C}" stroke-dashoffset="${off}"/></svg>
+        <div class="num">${r.score}%</div></div>
+      <div class="bars"><h3>Resume score for ${esc(r.file_name)}</h3>${bars}</div>
+    </div></div>
+
+    <div class="card"><h3>Skills found</h3>
+      <div class="chips">${r.skills.length ? r.skills.map(s=>`<span class="chip">${esc(s)}</span>`).join("") : '<span class="muted">No known skills detected.</span>'}</div></div>
+
+    <div class="grid2">
+      <div class="card"><h3>Education</h3>${listHtml(r.sections.education,"Not found")}</div>
+      <div class="card"><h3>Projects</h3>${listHtml(r.sections.projects,"Not found")}</div>
+      <div class="card"><h3>Experience</h3>${listHtml(r.sections.experience,"Not found")}</div>
+      <div class="card"><h3>Certifications</h3>${listHtml(r.sections.certifications,"Not found")}</div>
+    </div>
+
+    <div class="card"><h3>How to improve</h3>${listHtml(r.tips,"Great resume. Keep it up to date.")}</div>
+
+    <div class="card"><h3>Suitable job roles</h3>${roleHtml}</div>
+
+    <div class="card"><h3>Skill gap for a job role</h3>
+      <select id="gapRole" aria-label="Job role">${opts}</select>
+      <div id="gapBody" style="margin-top:14px"></div></div>
+
+    <div class="card"><h3>Similar saved resumes</h3><div id="simBody" class="scroll"></div>
+      <p><button class="btn" id="saveBtn">Save this analysis</button></p></div>`;
+
+  $("gapRole").addEventListener("change", renderGap);
+  $("saveBtn").addEventListener("click", saveCurrent);
+  renderGap();
+  renderSimilar();
+}
+
+function renderGap(){
+  const role = $("gapRole").value, g = skillGap(current.skills, role);
+  $("gapBody").innerHTML = `<p><strong>Match with ${esc(role)}: ${g.match}%</strong></p>
+    <p class="muted" style="margin-bottom:4px">You have</p>
+    <div class="chips">${g.have.length ? g.have.map(s=>`<span class="chip ok">${esc(s)}</span>`).join("") : "none"}</div>
+    <p class="muted" style="margin:12px 0 4px">Missing</p>
+    <div class="chips">${g.missing.length ? g.missing.map(s=>`<span class="chip miss">${esc(s)}</span>`).join("") : "nothing, you meet all requirements"}</div>`;
+}
+
+function renderSimilar(){
+  const sim = similarPast(current.skills, dbLoad("resumes"));
+  $("simBody").innerHTML = sim.length
+    ? '<table><tr><th>Name</th><th>Score</th><th>Top role</th><th>Saved</th><th>Similarity</th></tr>' +
+      sim.map(s => `<tr><td>${esc(s.name)}</td><td>${s.score}</td><td>${esc(s.top_role)}</td><td>${esc(s.created)}</td><td>${s.sim}%</td></tr>`).join("") + '</table>'
+    : '<p class="muted">No saved resumes yet.</p>';
+}
+
+function saveCurrent(){
+  const h = dbLoad("resumes");
+  h.unshift({id: Date.now(), name: current.file_name, score: current.score, skills: current.skills,
+             top_role: current.top_role, created: now(true)});
+  if(dbSave("resumes", h)){ toast("Analysis saved"); $("saveBtn").disabled = true; renderSimilar(); }
+  else toast("Could not save. Browser storage is blocked.");
+}
+
+/* history */
+function renderHistory(){
+  const h = dbLoad("resumes");
+  $("historyBody").innerHTML = h.length
+    ? '<table><tr><th>Name</th><th>Score</th><th>Top role</th><th>Saved</th><th></th></tr>' +
+      h.map(x => `<tr><td>${esc(x.name)}</td><td>${x.score}%</td><td>${esc(x.top_role)}</td><td>${esc(x.created)}</td>
+        <td><button class="btn ghost" data-del="${x.id}">Delete</button></td></tr>`).join("") + '</table>'
+    : '<p class="muted">Nothing saved yet. Analyze a resume and choose Save this analysis.</p>';
+  $("historyBody").querySelectorAll("[data-del]").forEach(b => b.addEventListener("click", () => {
+    dbSave("resumes", dbLoad("resumes").filter(x => String(x.id) !== b.dataset.del)); renderHistory();
+  }));
+}
+
+/* reviews */
+$("rvSave").addEventListener("click", () => {
+  const name = $("rvName").value.trim(), comment = $("rvComment").value.trim();
+  const rating = parseInt($("rvRating").value,10);
+  if(!name || !comment || !(rating>=1 && rating<=5)){
+    $("rvErr").innerHTML = '<div class="err">Enter a name, feedback and a rating of 1-5.</div>'; return;
+  }
+  const r = dbLoad("reviews");
+  r.unshift({id: Date.now(), reviewer: name, relation: $("rvRel").value, rating, comment, created: now(false)});
+  dbSave("reviews", r);
+  $("rvErr").innerHTML = ""; $("rvName").value = ""; $("rvComment").value = "";
+  toast("Review added");
+});
+
+function renderReviews(){
+  const r = dbLoad("reviews");
+  if(!r.length){ $("reviewsBody").innerHTML = '<p class="muted">No reviews yet.</p>'; return; }
+  const avg = (r.reduce((a,x)=>a+x.rating,0)/r.length).toFixed(1);
+  $("reviewsBody").innerHTML = `<p><strong>Average rating: ${avg} / 5</strong></p>` + r.map(x =>
+    `<div class="review"><div><strong>${esc(x.reviewer)}</strong> <span class="muted">(${esc(x.relation)}, ${esc(x.created)})</span>
+     <span class="star" aria-label="${x.rating} out of 5">${"★".repeat(x.rating)}${"☆".repeat(5-x.rating)}</span></div>
+     <div>${esc(x.comment)}</div></div>`).join("");
+}
+</script>
+</body>
+</html>
